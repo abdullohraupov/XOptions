@@ -704,7 +704,7 @@ QCommandLineOption XOptions::getCommandLineOption(CONSOLE_OPTION_ID nId)
             return {listOptions, pOption->pszDescription, "path"};
         } else if (nId == CONSOLE_OPTION_ID_STRUCT) {
             return {listOptions, pOption->pszDescription, "struct"};
-        } else if (nId == CONSOLE_OPTION_ID_EXTRACTARCHIVE || CONSOLE_OPTION_ID_TEST) {
+        } else if (nId == CONSOLE_OPTION_ID_EXTRACTARCHIVE || nId == CONSOLE_OPTION_ID_TEST) {
             return {listOptions, pOption->pszDescription, "directory"};
         } else if (nId == CONSOLE_OPTION_ID_CREATETEST) {
             return {listOptions, pOption->pszDescription, "filename", ""};
