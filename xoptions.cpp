@@ -704,9 +704,7 @@ QCommandLineOption XOptions::getCommandLineOption(CONSOLE_OPTION_ID nId)
             return {listOptions, pOption->pszDescription, "path"};
         } else if (nId == CONSOLE_OPTION_ID_STRUCT) {
             return {listOptions, pOption->pszDescription, "struct"};
-        } else if (nId == CONSOLE_OPTION_ID_EXTRACTARCHIVE) {
-            return {listOptions, pOption->pszDescription, "directory"};
-        } else if (nId == CONSOLE_OPTION_ID_TEST) {
+        } else if (nId == CONSOLE_OPTION_ID_EXTRACTARCHIVE || CONSOLE_OPTION_ID_TEST) {
             return {listOptions, pOption->pszDescription, "directory"};
         } else if (nId == CONSOLE_OPTION_ID_CREATETEST) {
             return {listOptions, pOption->pszDescription, "filename", ""};
@@ -967,7 +965,7 @@ QString XOptions::getLastDirectory() const
 {
     QString sResult;
 
-    bool bSaveLastDirectory = getValue(ID_FILE_SAVELASTDIRECTORY).toBool();
+    const bool bSaveLastDirectory = getValue(ID_FILE_SAVELASTDIRECTORY).toBool();
     QString sLastDirectory = getValue(ID_NU_LASTDIRECTORY).toString();
 
     if (bSaveLastDirectory && !sLastDirectory.isEmpty() && QDir().exists(sLastDirectory)) {
@@ -2415,116 +2413,65 @@ QString XOptions::getApplicationDataPath()
 
 QString XOptions::convertPathName(const QString &sPathName)
 {
-    QString sResult = sPathName;
+    if (!sPathName.contains("$data")) {
+        return sPathName;
+    }
 
-    if (sPathName.contains("$data")) {
-        bool bSuccess = false;
-        QString _sPathName;
-        QString sApplicationDirPath = qApp->applicationDirPath();
-        QString sApplicationName = qApp->applicationName();
+    const QString sAppDir = qApp->applicationDirPath();
+    const QString sAppName = qApp->applicationName();
+
+    QList<QString> listPaths;
 
 #ifdef Q_OS_MAC
-        if (!bSuccess) {
-            _sPathName = sPathName;
-            QString _sApplicationDirPath = sApplicationDirPath + "/../Resources";
-
-            _sPathName = _sPathName.replace("$data", _sApplicationDirPath);
-
-            bSuccess = isPathExists(_sPathName);
-        }
+    listPaths.append(sAppDir + "/../Resources");
 #endif
 
-        if (!bSuccess) {
-            _sPathName = sPathName;
-            _sPathName = _sPathName.replace("$data", sApplicationDirPath);
+    listPaths.append(sAppDir);
 
-            bSuccess = isPathExists(_sPathName);
-        }
+    listPaths.append(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
 
-        if (!bSuccess) {
-            _sPathName = sPathName;
-            QString sAppData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (sAppDir.contains("/usr/local/bin")) {
+        const QString sPrefix = sAppDir.section("/usr/local/bin", 0, 0);
+        listPaths.append(sPrefix + QString("/usr/local/lib/%1").arg(sAppName));
+    }
 
-            _sPathName = _sPathName.replace("$data", sAppData);
+    if (sAppDir.contains("/app/bin")) {
+        const QString sPrefix = sAppDir.section("/app/bin", 0, 0);
+        listPaths.append(sPrefix + QString("/app/lib/%1").arg(sAppName));
+    }
 
-            bSuccess = isPathExists(_sPathName);
-        }
+    if (sAppDir.contains("/tmp/.mount_")) {
+        const QString sPrefix = sAppDir.section("/", 0, 2);
+        listPaths.append(sPrefix + QString("/app/lib/%1").arg(sAppName));
+        listPaths.append(sPrefix + QString("/usr/share/%1").arg(sAppName));
+    }
 
-        if (!bSuccess) {
-            if (sApplicationDirPath.contains("/usr/local/bin")) {
-                _sPathName = sPathName;
-                QString sPrefix = sApplicationDirPath.section("/usr/local/bin", 0, 0);
-                QString sPath = sPrefix + QString("/usr/local/lib/%1").arg(sApplicationName);
-
-                _sPathName = _sPathName.replace("$data", sPath);
-
-                bSuccess = isPathExists(_sPathName);
-            }
-        }
-
-        if (!bSuccess) {
-            if (sApplicationDirPath.contains("/app/bin")) {
-                _sPathName = sPathName;
-                QString sPrefix = sApplicationDirPath.section("/app/bin", 0, 0);
-                QString sPath = sPrefix + QString("/app/lib/%1").arg(sApplicationName);
-
-                _sPathName = _sPathName.replace("$data", sPath);
-
-                bSuccess = isPathExists(_sPathName);
-            }
-        }
-
-        if (!bSuccess) {
-            if (sApplicationDirPath.contains("/tmp/.mount_")) {
-                _sPathName = sPathName;
-                QString sPrefix = sApplicationDirPath.section("/", 0, 2);
-
-                QString sPath = sPrefix + QString("/app/lib/%1").arg(sApplicationName);
-
-                _sPathName = _sPathName.replace("$data", sPath);
-
-                bSuccess = isPathExists(_sPathName);
-            }
-        }
-
-        if (!bSuccess) {
-            for (qint32 nIndex = 0; nIndex < 10; nIndex++) {
-                _sPathName = sPathName;
-                QString sPath = qApp->property(QString("dataPathAlt%1").arg(nIndex).toUtf8().data()).toString();
-
-                _sPathName = _sPathName.replace("$data", sPath);
-
-                if (!sPath.isEmpty() && isPathExists(_sPathName)) {
-                    bSuccess = true;
-                    break;
-                }
-            }
-        }
-
-        if (!bSuccess) {
-            _sPathName = sPathName;
-            QString sPath = QString("/usr/local/lib/%1").arg(sApplicationName);
-
-            _sPathName = _sPathName.replace("$data", sPath);
-
-            bSuccess = isPathExists(_sPathName);
-        }
-
-        if (!bSuccess) {
-            _sPathName = sPathName;
-            QString sPath = QString("/usr/lib/%1").arg(sApplicationName);
-
-            _sPathName = _sPathName.replace("$data", sPath);
-
-            bSuccess = isPathExists(_sPathName);
-        }
-
-        if (bSuccess) {
-            sResult = _sPathName;
+    for (quint8 i = 0; i < 10; ++i) {
+        QString sAltPath = qApp->property(QString("dataPathAlt%1").arg(i).toUtf8().data()).toString();
+        if (!sAltPath.isEmpty()) {
+            listPaths.append(sAltPath);
         }
     }
 
-    return sResult;
+    listPaths.append(QString("/usr/local/lib/%1").arg(sAppName));
+    listPaths.append(QString("/usr/lib/%1").arg(sAppName));
+    listPaths.append(QString("/usr/local/share/%1").arg(sAppName));
+    listPaths.append(QString("/usr/share/%1").arg(sAppName));
+
+    for (const QString &sPath : listPaths) {
+        if (sPath.isEmpty()) {
+            continue;
+        }
+
+        QString sTestPath = sPathName;
+        sTestPath.replace("$data", sPath);
+
+        if (isPathExists(sTestPath)) {
+            return sTestPath;
+        }
+    }
+
+    return sPathName;
 }
 
 bool XOptions::isPathExists(const QString &sPathName)
@@ -2534,7 +2481,7 @@ bool XOptions::isPathExists(const QString &sPathName)
 
 QString XOptions::getTitle(const QString &sName, const QString &sVersion, bool bShowOS)
 {
-    QString sResult = QString("%1 v%2").arg(sName).arg(sVersion);
+    QString sResult = QString("%1 v%2").arg(sName, sVersion);
 
     if (bShowOS) {
 #if QT_VERSION >= QT_VERSION_CHECK(5, 4, 0)
@@ -2992,9 +2939,9 @@ QMenu *XOptions::createCodePagesMenu(QWidget *pParent, bool bAll)
 
         QList<QString> listCodePages = getCodePages(bAll);
 
-        qint32 nNumberOfRecords = listCodePages.count();
+        auto nNumberOfRecords = listCodePages.count();
 
-        for (qint32 i = 0; i < nNumberOfRecords; i++) {
+        for (qsizetype i = 0; i < nNumberOfRecords; i++) {
             QAction *pAction = new QAction(listCodePages.at(i), m_pCodePagesMenu);
             pAction->setData(listCodePages.at(i));
 
